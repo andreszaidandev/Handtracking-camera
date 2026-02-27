@@ -116,3 +116,14 @@
   text-align: center;
   word-break: break-word;
 }
+
+@media (max-width: 820px) {
+  .ct-root,
+  .ct-frame {
+    width: 100vw;
+    height: 100vh;
+    height: 100svh;
+    height: 100dvh;
+    border-radius: 0;
+  }
+}
