@@ -1,10 +1,9 @@
 :root {
-  --bg: #0b0f17;
-  --card: #121a2a;
-  --text: #e9eefc;
-  --muted: #aab6d6;
-  --accent: #6aa6ff;
-  --border: rgba(255, 255, 255, 0.08);
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.65);
+  --border: rgba(255, 255, 255, 0.14);
+  --glass: rgba(10, 14, 20, 0.35);
+  --glass2: rgba(10, 14, 20, 0.55);
 }
 
 * {
@@ -19,134 +18,264 @@ body,
 
 body {
   margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial,
-    "Apple Color Emoji", "Segoe UI Emoji";
-  background: radial-gradient(1200px 600px at 30% 0%, #16254a 0%, var(--bg) 55%);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  background: black;
   color: var(--text);
+  overflow: hidden;
 }
 
-.app {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.header {
-  padding: 24px 18px 8px;
-  max-width: 1100px;
+.page {
+  position: relative;
+  height: 100%;
   width: 100%;
-  margin: 0 auto;
 }
 
-h1 {
-  margin: 0;
-  font-size: 28px;
+/* Camera fills the page */
+.cameraStage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
 }
 
-.sub {
-  margin: 8px 0 0;
-  color: var(--muted);
+/* Top HUD */
+.hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 3;
 }
 
-.main {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1.25fr 0.75fr;
-  gap: 16px;
-  max-width: 1100px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 16px 18px 24px;
-}
-
-@media (max-width: 980px) {
-  .main {
-    grid-template-columns: 1fr;
-  }
-}
-
-.card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent);
+.hudLeft {
+  padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 14px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--glass2), var(--glass));
+  backdrop-filter: blur(10px);
 }
 
-.galleryHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 10px;
-}
-
-.galleryHeader h2 {
-  margin: 0;
-  font-size: 18px;
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
 
 .hint {
-  color: var(--muted);
+  margin-top: 4px;
   font-size: 12px;
-}
-
-.previewWrap {
-  width: 100%;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
-.preview {
-  width: 100%;
-  display: block;
-}
-
-.empty {
-  padding: 18px;
-  border: 1px dashed var(--border);
-  border-radius: 14px;
   color: var(--muted);
-  text-align: center;
 }
 
-.grid {
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+/* Bottom-right latest photo */
+.latestWrap {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4;
 }
 
-.thumbBtn {
-  padding: 0;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+.latestBtn {
+  width: 300px;
+  height: 170px;
+  border-radius: 16px;
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.25);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+
+  padding: 0;
   cursor: pointer;
-  transition: transform 0.08s ease;
+  position: relative;
+  opacity: 0.92;
+  transition: transform 0.12s ease, opacity 0.12s ease;
 }
 
-.thumbBtn:active {
-  transform: scale(0.98);
+.latestBtn:hover {
+  transform: scale(1.03);
+  opacity: 1;
 }
 
-.thumb {
+.latestBtn img {
   width: 100%;
-  height: 70px;
+  height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.footer {
-  max-width: 1100px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 18px 18px;
+/* small glass label on thumbnail */
+.latestMeta {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 0;
+  background: none;
+  border: none;
+  backdrop-filter: none;
+
+  font-size: 11px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.85);
+
+  pointer-events: none;
+}
+
+.count {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* placeholder before first capture */
+.latestPlaceholder {
+  width: 170px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--glass2), var(--glass));
+  backdrop-filter: blur(10px);
+  padding: 10px 12px;
+}
+
+.phTitle {
+  font-weight: 700;
+}
+
+.phSub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Modal / gallery */
+.modal {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+}
+
+.modalBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+}
+
+.modalContent {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(980px, calc(100% - 28px));
+  height: min(720px, calc(100% - 28px));
+  transform: translate(-50%, -50%);
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(8, 10, 14, 0.72);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+}
+
+.modalTop {
+  padding: 12px 12px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modalTitle {
   color: var(--muted);
   font-size: 12px;
 }
 
-code {
-  color: var(--accent);
+.modalActions {
+  display: flex;
+  gap: 8px;
+}
+
+.iconBtn {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.modalBody {
+  display: grid;
+  grid-template-columns: 52px 1fr 52px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 0;
+}
+
+.navBtn {
+  height: 52px;
+  width: 52px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.modalImageWrap {
+  height: 100%;
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.modalImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.strip {
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.stripThumb {
+  width: 92px;
+  height: 64px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+.stripThumb.active {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.stripThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.modalFoot {
+  padding: 10px 12px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }

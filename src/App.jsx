@@ -1,69 +1,160 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
-import CameraTracking from "./cameratracking";
+import CameraTracking from "./CameraTracking";
 
 export default function App() {
-  const [lastPhoto, setLastPhoto] = useState(null);
   const [photos, setPhotos] = useState([]);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
 
-  function handleCapture(dataUrl) {
-    setLastPhoto(dataUrl);
-    setPhotos((prev) => [dataUrl, ...prev].slice(0, 12));
+  function addPhoto(dataUrl) {
+    setPhotos((prev) => [dataUrl, ...prev].slice(0, 50));
+    setActiveIndex(0);
+  }
+
+  const latest = photos[0] ?? null;
+
+  function openGallery(index = 0) {
+    if (!photos.length) return;
+    setActiveIndex(index);
+    setGalleryOpen(true);
+  }
+
+  function closeGallery() {
+    setGalleryOpen(false);
+  }
+
+  const activePhoto = useMemo(() => photos[activeIndex], [photos, activeIndex]);
+
+  // Keyboard controls while gallery is open
+  useEffect(() => {
+    if (!galleryOpen) return;
+
+    function onKeyDown(e) {
+      if (e.key === "Escape") closeGallery();
+      if (e.key === "ArrowRight") {
+        setActiveIndex((i) => (i + 1) % photos.length);
+      }
+      if (e.key === "ArrowLeft") {
+        setActiveIndex((i) => (i - 1 + photos.length) % photos.length);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [galleryOpen, photos.length]);
+
+  function deleteActive() {
+    setPhotos((prev) => {
+      const next = prev.filter((_, idx) => idx !== activeIndex);
+      const newIndex = Math.max(0, Math.min(activeIndex, next.length - 1));
+      setActiveIndex(newIndex);
+      if (next.length === 0) setGalleryOpen(false);
+      return next;
+    });
   }
 
   return (
-    <div className="app">
-      <header className="header">
-        <div>
-          <h1>Pinch → Photo</h1>
-          <p className="sub">
-            Pinch your thumb + index finger to take a picture.
-          </p>
+    <div className="page">
+      {/* Fullscreen camera */}
+      <div className="cameraStage">
+        <CameraTracking onCapture={addPhoto} />
+      </div>
+
+      {/* Minimal top HUD */}
+      <div className="hud">
+        <div className="hudLeft">
+          <div className="brand">PinchCam</div>
+          <div className="hint">Pinch thumb + index to snap</div>
         </div>
-      </header>
+      </div>
 
-      <main className="main">
-        <section className="card">
-          <CameraTracking onCapture={handleCapture} />
-        </section>
-
-        <section className="card">
-          <div className="galleryHeader">
-            <h2>Captured</h2>
-            <span className="hint">{photos.length} photo(s)</span>
-          </div>
-
-          {lastPhoto ? (
-            <div className="previewWrap">
-              <img className="preview" src={lastPhoto} alt="Latest capture" />
+      {/* Bottom-right latest photo thumbnail */}
+      <div className="latestWrap">
+        {latest ? (
+          <button
+            className="latestBtn"
+            onClick={() => openGallery(0)}
+            title="Open gallery"
+          >
+            <img src={latest} alt="latest" />
+            <div className="latestMeta">
+              <span>Gallery</span>
+              <span className="count">{photos.length}</span>
             </div>
-          ) : (
-            <div className="empty">No photo yet. Try pinching.</div>
-          )}
+          </button>
+        ) : (
+          <div className="latestPlaceholder">
+            <div className="phTitle">No photos yet</div>
+            <div className="phSub">Pinch to capture</div>
+          </div>
+        )}
+      </div>
 
-          {photos.length > 0 && (
-            <div className="grid">
+      {/* Gallery modal */}
+      {galleryOpen && activePhoto && (
+        <div className="modal" role="dialog" aria-modal="true">
+          <div className="modalBackdrop" onClick={closeGallery} />
+
+          <div className="modalContent">
+            <div className="modalTop">
+              <div className="modalTitle">
+                {activeIndex + 1} / {photos.length}
+              </div>
+
+              <div className="modalActions">
+                <button className="iconBtn" onClick={deleteActive} title="Delete">
+                  Delete
+                </button>
+                <button className="iconBtn" onClick={closeGallery} title="Close">
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="modalBody">
+              <button
+                className="navBtn"
+                onClick={() =>
+                  setActiveIndex((i) => (i - 1 + photos.length) % photos.length)
+                }
+                aria-label="Previous"
+              >
+                ‹
+              </button>
+
+              <div className="modalImageWrap">
+                <img className="modalImage" src={activePhoto} alt="active" />
+              </div>
+
+              <button
+                className="navBtn"
+                onClick={() => setActiveIndex((i) => (i + 1) % photos.length)}
+                aria-label="Next"
+              >
+                ›
+              </button>
+            </div>
+
+            <div className="strip">
               {photos.map((p, idx) => (
                 <button
                   key={idx}
-                  className="thumbBtn"
-                  onClick={() => setLastPhoto(p)}
-                  title="Set as preview"
+                  className={"stripThumb " + (idx === activeIndex ? "active" : "")}
+                  onClick={() => setActiveIndex(idx)}
+                  title={`Photo ${idx + 1}`}
                 >
-                  <img className="thumb" src={p} alt={`capture-${idx}`} />
+                  <img src={p} alt={`strip-${idx}`} />
                 </button>
               ))}
             </div>
-          )}
-        </section>
-      </main>
 
-      <footer className="footer">
-        <span>
-          Tip: good lighting + keep hand in frame. If it’s too sensitive, tweak
-          the pinch threshold in <code>CameraTracking.jsx</code>.
-        </span>
-      </footer>
+            <div className="modalFoot">
+              <span>Tip: ← / → to navigate, Esc to close.</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

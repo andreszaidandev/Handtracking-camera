@@ -1,0 +1,114 @@
+/* CameraTracking.css */
+.ct-root {
+  width: 100%;
+}
+
+.ct-frame {
+  position: relative;
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ct-video {
+  width: 100%;
+  height: auto;
+  transform: scaleX(-1);
+  display: block;
+  background: black;
+}
+
+.ct-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Center countdown */
+.ct-countdown {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(72px, 12vw, 160px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  user-select: none;
+  backdrop-filter: blur(2px);
+}
+
+.ct-footer {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.ct-status {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+}
+
+.ct-rightPills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ct-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  user-select: none;
+}
+
+.ct-pill--pinch {
+  background: rgba(0, 255, 140, 0.12);
+  color: rgba(0, 255, 140, 0.95);
+}
+
+.ct-lr {
+  display: flex;
+  gap: 6px;
+}
+
+.ct-lrTag {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  user-select: none;
+}
+
+.ct-lrTag.is-on {
+  background: rgba(106, 166, 255, 0.16);
+  color: rgba(210, 230, 255, 0.95);
+  border-color: rgba(106, 166, 255, 0.25);
+}
+
+.ct-hiddenCanvas {
+  display: none;
+}
+
+.ct-lrTag.is-detected {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.ct-lrTag.is-on {
+  background: rgba(0, 255, 140, 0.14);
+  color: rgba(0, 255, 140, 0.95);
+  border-color: rgba(0, 255, 140, 0.25);
+}
