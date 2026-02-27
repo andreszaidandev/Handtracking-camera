@@ -80,7 +80,7 @@ export default function CameraTracking({ onCapture }) {
     setCountdown(null);
   }
 
-  async function getCameraAccess() {
+  function buildViewportVideoConstraints() {
     const viewportWidth = Math.max(
       1,
       Math.round(window.innerWidth * (window.devicePixelRatio || 1))
@@ -90,14 +90,20 @@ export default function CameraTracking({ onCapture }) {
       Math.round(window.innerHeight * (window.devicePixelRatio || 1))
     );
 
+    return {
+      facingMode: "user",
+      width: { ideal: viewportWidth },
+      height: { ideal: viewportHeight },
+      aspectRatio: { ideal: viewportWidth / viewportHeight },
+    };
+  }
+
+  async function getCameraAccess() {
+    const viewportConstraints = buildViewportVideoConstraints();
+
     try {
       return await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: viewportWidth },
-          height: { ideal: viewportHeight },
-          aspectRatio: { ideal: viewportWidth / viewportHeight },
-        },
+        video: viewportConstraints,
         audio: false,
       });
     } catch (primaryError) {
@@ -110,6 +116,18 @@ export default function CameraTracking({ onCapture }) {
       } catch {
         return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }
+    }
+  }
+
+  async function applyViewportConstraintsToActiveTrack() {
+    const stream = videoRef.current?.srcObject;
+    const track = stream?.getVideoTracks?.()[0];
+    if (!track?.applyConstraints) return;
+
+    try {
+      await track.applyConstraints(buildViewportVideoConstraints());
+    } catch {
+      // Ignore resize/orientation constraint failures; existing stream remains usable.
     }
   }
 
@@ -472,6 +490,28 @@ export default function CameraTracking({ onCapture }) {
       detectorRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supportsMedia]);
+
+  useEffect(() => {
+    if (!supportsMedia) return;
+
+    let timerId = null;
+    const refreshForViewport = () => {
+      if (!startedRef.current) return;
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(() => {
+        applyViewportConstraintsToActiveTrack();
+      }, 120);
+    };
+
+    window.addEventListener("resize", refreshForViewport);
+    window.addEventListener("orientationchange", refreshForViewport);
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+      window.removeEventListener("resize", refreshForViewport);
+      window.removeEventListener("orientationchange", refreshForViewport);
+    };
   }, [supportsMedia]);
 
   return (

@@ -138,6 +138,10 @@ body {
   position: absolute;
   inset: 0;
   z-index: 10;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
 }
 
 .modalBackdrop {
@@ -339,5 +343,71 @@ body {
   .strip {
     padding: 8px;
     gap: 8px;
+  }
+}
+
+@media (max-width: 932px) and (orientation: landscape) {
+  .latestWrap {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .latestBtn {
+    width: min(24vw, 148px);
+    border-radius: 10px;
+  }
+
+  .latestPlaceholder {
+    width: min(30vw, 132px);
+    border-radius: 10px;
+    padding: 7px 8px;
+  }
+
+  .phTitle {
+    font-size: 12px;
+  }
+
+  .phSub {
+    font-size: 11px;
+  }
+
+  .modalContent {
+    width: calc(100% - 8px);
+    height: calc(100% - 8px);
+    border-radius: 12px;
+  }
+
+  .modalTop {
+    padding: 6px 8px;
+  }
+
+  .modalBody {
+    grid-template-columns: 38px 1fr 38px;
+    gap: 6px;
+    padding: 6px 6px 0;
+  }
+
+  .navBtn {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    font-size: 20px;
+  }
+
+  .iconBtn {
+    padding: 6px 8px;
+    border-radius: 9px;
+    font-size: 11px;
+  }
+
+  .strip {
+    padding: 6px;
+    gap: 6px;
+  }
+
+  .stripThumb {
+    width: 64px;
+    height: 46px;
+    border-radius: 9px;
   }
 }
