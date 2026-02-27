@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
-import CameraTracking from "./CameraTracking";
+import CameraTracking from "./cameratracking";
 
 export default function App() {
   const [photos, setPhotos] = useState([]);
