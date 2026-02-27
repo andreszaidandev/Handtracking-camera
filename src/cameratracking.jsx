@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import * as tf from "@tensorflow/tfjs-core";
 import "@tensorflow/tfjs-backend-webgl";
 import * as handPoseDetection from "@tensorflow-models/hand-pose-detection";
@@ -10,37 +10,13 @@ function dist(a, b) {
   return Math.hypot(dx, dy);
 }
 
-// MediaPipe Hands keypoint indices (21 points)
 const CONNECTIONS = [
-  // thumb
-  [0, 1],
-  [1, 2],
-  [2, 3],
-  [3, 4],
-  // index
-  [0, 5],
-  [5, 6],
-  [6, 7],
-  [7, 8],
-  // middle
-  [0, 9],
-  [9, 10],
-  [10, 11],
-  [11, 12],
-  // ring
-  [0, 13],
-  [13, 14],
-  [14, 15],
-  [15, 16],
-  // pinky
-  [0, 17],
-  [17, 18],
-  [18, 19],
-  [19, 20],
-  // palm-ish
-  [5, 9],
-  [9, 13],
-  [13, 17],
+  [0, 1],[1, 2],[2, 3],[3, 4],
+  [0, 5],[5, 6],[6, 7],[7, 8],
+  [0, 9],[9,10],[10,11],[11,12],
+  [0,13],[13,14],[14,15],[15,16],
+  [0,17],[17,18],[18,19],[19,20],
+  [5, 9],[9,13],[13,17],
 ];
 
 export default function CameraTracking({ onCapture }) {
@@ -50,28 +26,36 @@ export default function CameraTracking({ onCapture }) {
 
   const detectorRef = useRef(null);
   const rafRef = useRef(null);
-
-  const [status, setStatus] = useState("Initializing…");
-
-  // pinching states (true only when pinching)
-  const [pinchStates, setPinchStates] = useState({ left: false, right: false });
-
-  // detection states (true when a hand exists on that side)
-  const [presentStates, setPresentStates] = useState({
-    left: false,
-    right: false,
-  });
-
-  const [countdown, setCountdown] = useState(null); // 3..2..1
+  const stoppedRef = useRef(false);
+  const startedRef = useRef(false);
+  const [, setStatus] = useState("Initializing...");
+  const [countdown, setCountdown] = useState(null);
+  const [showStartGate, setShowStartGate] = useState(true);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState("");
 
   // tweakables
-  const PINCH_THRESHOLD = 0.35;
+  const OK_TOUCH_THRESHOLD = 0.34;
+  const INDEX_CURLED_MAX = 1.2;
+  const INDEX_CURLED_MIN = 0.2;
+  const THUMB_EXTENSION_MIN = 0.28;
+  const THREE_FINGERS_EXTENSION_MIN = 0.95;
+  const THREE_FINGERS_TO_CIRCLE_MIN = 0.45;
+  const FIST_GUARD_MIN = 0.9;
   const COOLDOWN_MS = 1200;
   const COUNTDOWN_SECONDS = 3;
 
-  const lastCaptureAtRef = useRef(0);
+  // performance: inference throttle
+  const INFERENCE_FPS = 15; // try 10-20
+  const INFERENCE_INTERVAL_MS = Math.floor(1000 / INFERENCE_FPS);
+  const lastInferAtRef = useRef(0);
 
-  // each side must release pinch before it can trigger again
+  // keep latest predictions in refs (draw every frame from refs)
+  const lrPredRef = useRef({ left: null, right: null });
+  const pinchRef = useRef({ left: false, right: false });
+
+  // capture gating
+  const lastCaptureAtRef = useRef(0);
   const pinchArmedRef = useRef({ left: true, right: true });
 
   // countdown refs
@@ -79,15 +63,10 @@ export default function CameraTracking({ onCapture }) {
   const countdownTimeoutsRef = useRef([]);
   const pendingCaptureRef = useRef(false);
 
-  // keep latest status for drawing (avoid stale closure in drawOverlay)
-  const statusRef = useRef(status);
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
-
   const supportsMedia = useMemo(() => {
     return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   }, []);
+  const isSecureContext = typeof window === "undefined" ? true : window.isSecureContext;
 
   function clearCountdownTimers() {
     countdownTimeoutsRef.current.forEach((id) => clearTimeout(id));
@@ -101,15 +80,41 @@ export default function CameraTracking({ onCapture }) {
     setCountdown(null);
   }
 
+  async function getCameraAccess() {
+    const viewportWidth = Math.max(
+      1,
+      Math.round(window.innerWidth * (window.devicePixelRatio || 1))
+    );
+    const viewportHeight = Math.max(
+      1,
+      Math.round(window.innerHeight * (window.devicePixelRatio || 1))
+    );
+
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: viewportWidth },
+          height: { ideal: viewportHeight },
+          aspectRatio: { ideal: viewportWidth / viewportHeight },
+        },
+        audio: false,
+      });
+    } catch (primaryError) {
+      // Fallback constraints for devices that do better with explicit front camera hints.
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false,
+        });
+      } catch {
+        return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+    }
+  }
+
   async function setupCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "user",
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-      audio: false,
-    });
+    const stream = await getCameraAccess();
 
     const video = videoRef.current;
     video.srcObject = stream;
@@ -133,7 +138,7 @@ export default function CameraTracking({ onCapture }) {
   }
 
   async function setupModel() {
-    setStatus("Loading model…");
+    setStatus("Loading modelâ€¦");
     await tf.setBackend("webgl");
     await tf.ready();
 
@@ -158,7 +163,6 @@ export default function CameraTracking({ onCapture }) {
     const canvas = captureCanvasRef.current;
     const ctx = canvas.getContext("2d");
 
-    // mirror save so it matches what user sees
     ctx.save();
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
@@ -171,32 +175,87 @@ export default function CameraTracking({ onCapture }) {
 
   function computePinch(pred) {
     const kp = pred?.keypoints;
-    if (!kp || kp.length < 10) return { isPinch: false, ratio: Infinity };
+    if (!kp || kp.length < 21) return false;
 
     const thumbTip = kp[4];
+    const thumbMcp = kp[2];
     const indexTip = kp[8];
+    const indexMcp = kp[5];
+    const middleTip = kp[12];
+    const middleMcp = kp[9];
+    const middlePip = kp[10];
+    const ringTip = kp[16];
+    const ringMcp = kp[13];
+    const ringPip = kp[14];
+    const pinkyTip = kp[20];
+    const pinkyMcp = kp[17];
+    const pinkyPip = kp[18];
     const wrist = kp[0];
-    const middleMCP = kp[9];
 
     const pinchDistance = dist(thumbTip, indexTip);
-    const handScale = Math.max(dist(wrist, middleMCP), 1);
+    const handScale = Math.max(dist(wrist, middleMcp), 1);
+    const touchRatio = pinchDistance / handScale;
 
-    const ratio = pinchDistance / handScale;
-    const isPinch = ratio < PINCH_THRESHOLD;
+    const indexCurlRatio = dist(indexTip, indexMcp) / handScale;
+    const thumbExtensionRatio = dist(thumbTip, thumbMcp) / handScale;
 
-    return { isPinch, ratio };
+    const middleExt = dist(middleTip, middleMcp) / handScale;
+    const ringExt = dist(ringTip, ringMcp) / handScale;
+    const pinkyExt = dist(pinkyTip, pinkyMcp) / handScale;
+
+    const circleCenter = {
+      x: (thumbTip.x + indexTip.x) / 2,
+      y: (thumbTip.y + indexTip.y) / 2,
+    };
+
+    const middleAwayFromCircle = dist(middleTip, circleCenter) / handScale;
+    const ringAwayFromCircle = dist(ringTip, circleCenter) / handScale;
+    const pinkyAwayFromCircle = dist(pinkyTip, circleCenter) / handScale;
+    const awayAvg =
+      (middleAwayFromCircle + ringAwayFromCircle + pinkyAwayFromCircle) / 3;
+
+    // Orientation-tolerant extension check:
+    // a finger is considered "open" when tip is farther from wrist than its PIP.
+    const isMiddleOpen = dist(middleTip, wrist) > dist(middlePip, wrist) * 1.08;
+    const isRingOpen = dist(ringTip, wrist) > dist(ringPip, wrist) * 1.08;
+    const isPinkyOpen = dist(pinkyTip, wrist) > dist(pinkyPip, wrist) * 1.08;
+    const openCount = Number(isMiddleOpen) + Number(isRingOpen) + Number(isPinkyOpen);
+
+    const avgTipToWrist =
+      (dist(middleTip, wrist) + dist(ringTip, wrist) + dist(pinkyTip, wrist)) / 3;
+    const notFistLike = avgTipToWrist / handScale > FIST_GUARD_MIN;
+    const threeFingersAvgExt = (middleExt + ringExt + pinkyExt) / 3;
+
+    // Strict OK sign
+    const strictOk =
+      touchRatio < OK_TOUCH_THRESHOLD &&
+      indexCurlRatio > INDEX_CURLED_MIN &&
+      indexCurlRatio < INDEX_CURLED_MAX &&
+      thumbExtensionRatio > THUMB_EXTENSION_MIN &&
+      openCount >= 2 &&
+      awayAvg > THREE_FINGERS_TO_CIRCLE_MIN &&
+      notFistLike;
+
+    // Moderate OK sign fallback (still rejects pinch/fist):
+    // - touch must be close
+    // - middle+ring+pinky should generally be farther from wrist than index
+    // - not fist-like
+    const moderateOk =
+      touchRatio < OK_TOUCH_THRESHOLD * 1.08 &&
+      thumbExtensionRatio > THUMB_EXTENSION_MIN * 0.9 &&
+      threeFingersAvgExt > indexCurlRatio + 0.1 &&
+      (threeFingersAvgExt > 0.9 || openCount >= 2) &&
+      awayAvg > THREE_FINGERS_TO_CIRCLE_MIN * 0.9 &&
+      notFistLike;
+
+    return strictOk || moderateOk;
   }
 
   function labelHandsLeftRight(predictions) {
-    // Label by wrist.x: smaller x = left side of screen
     const hands = (predictions || [])
       .map((pred) => {
-        const kp = pred?.keypoints;
-        const wrist = kp?.[0];
-        return {
-          pred,
-          wristX: wrist?.x ?? Number.POSITIVE_INFINITY,
-        };
+        const wrist = pred?.keypoints?.[0];
+        return { pred, wristX: wrist?.x ?? Number.POSITIVE_INFINITY };
       })
       .filter((h) => h.pred?.keypoints?.length);
 
@@ -219,7 +278,6 @@ export default function CameraTracking({ onCapture }) {
 
     for (let i = 1; i <= COUNTDOWN_SECONDS; i++) {
       const remaining = COUNTDOWN_SECONDS - i;
-
       const id = setTimeout(() => {
         if (!countdownActiveRef.current) return;
 
@@ -240,11 +298,11 @@ export default function CameraTracking({ onCapture }) {
     }
   }
 
-  function drawHand(ctx, pred, label, isPinching) {
+  function drawHand(ctx, pred, isPinching) {
     const kp = pred?.keypoints;
     if (!kp || kp.length < 21) return;
 
-    // draw skeleton lines
+    // skeleton
     ctx.lineWidth = 3;
     ctx.strokeStyle = "rgba(255,255,255,0.55)";
     ctx.beginPath();
@@ -257,7 +315,7 @@ export default function CameraTracking({ onCapture }) {
     }
     ctx.stroke();
 
-    // draw points
+    // points
     for (const p of kp) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
@@ -265,7 +323,7 @@ export default function CameraTracking({ onCapture }) {
       ctx.fill();
     }
 
-    // draw pinch line
+    // pinch line
     const thumbTip = kp[4];
     const indexTip = kp[8];
     ctx.beginPath();
@@ -277,82 +335,113 @@ export default function CameraTracking({ onCapture }) {
       : "rgba(255,255,255,0.35)";
     ctx.stroke();
 
-    // label near wrist
-    const wrist = kp[0];
-    ctx.font = "16px ui-sans-serif, system-ui";
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    ctx.fillText(label, wrist.x + 10, wrist.y - 10);
   }
 
-  function drawOverlay(predictions, lr, pinchBySide) {
+  function drawOverlay() {
     const canvas = overlayRef.current;
     const ctx = canvas.getContext("2d");
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // status text
-    ctx.font = "16px ui-sans-serif, system-ui";
-    ctx.fillStyle = "rgba(255,255,255,0.85)";
-    ctx.fillText(`Status: ${statusRef.current}`, 14, 26);
+    const lr = lrPredRef.current;
+    const pinchBySide = pinchRef.current;
 
-    // draw hands (left/right)
-    if (lr.left) drawHand(ctx, lr.left, "Left", pinchBySide.left);
-    if (lr.right) drawHand(ctx, lr.right, "Right", pinchBySide.right);
+    if (lr.left) drawHand(ctx, lr.left, pinchBySide.left);
+    if (lr.right) drawHand(ctx, lr.right, pinchBySide.right);
   }
 
   async function loop() {
     const detector = detectorRef.current;
     const video = videoRef.current;
 
-    if (!detector || !video || video.readyState < 2) {
-      rafRef.current = requestAnimationFrame(loop);
-      return;
+    // always draw at display rate (smooth UI),
+    // but throttle model inference (smooth performance)
+    if (detector && video && video.readyState >= 2) {
+      const now = performance.now();
+      const shouldInfer = now - lastInferAtRef.current >= INFERENCE_INTERVAL_MS;
+
+      if (shouldInfer) {
+        lastInferAtRef.current = now;
+
+        const predictions = await detector.estimateHands(video, {
+          flipHorizontal: true,
+        });
+
+        const lr = labelHandsLeftRight(predictions);
+        lrPredRef.current = lr;
+
+        const nextPinch = {
+          left: lr.left ? computePinch(lr.left) : false,
+          right: lr.right ? computePinch(lr.right) : false,
+        };
+        pinchRef.current = nextPinch;
+
+        // capture trigger (edge + cooldown + no countdown)
+        const nowMs = Date.now();
+        const cooledDown = nowMs - lastCaptureAtRef.current > COOLDOWN_MS;
+
+        const tryTrigger = (side) => {
+          const isPinchNow = nextPinch[side];
+          const armed = pinchArmedRef.current[side];
+
+          if (!isPinchNow) {
+            pinchArmedRef.current[side] = true;
+            return;
+          }
+
+          if (
+            isPinchNow &&
+            armed &&
+            cooledDown &&
+            !countdownActiveRef.current
+          ) {
+            lastCaptureAtRef.current = nowMs;
+            pinchArmedRef.current[side] = false;
+            startCountdownAndCapture();
+          }
+        };
+
+        tryTrigger("left");
+        tryTrigger("right");
+
+      }
     }
 
-    const predictions = await detector.estimateHands(video, {
-      flipHorizontal: true,
-    });
-
-    const lr = labelHandsLeftRight(predictions);
-
-    const leftPresent = !!lr.left;
-    const rightPresent = !!lr.right;
-
-    const leftPinch = lr.left ? computePinch(lr.left).isPinch : false;
-    const rightPinch = lr.right ? computePinch(lr.right).isPinch : false;
-
-    const pinchBySide = { left: leftPinch, right: rightPinch };
-
-    setPresentStates({ left: leftPresent, right: rightPresent });
-    setPinchStates(pinchBySide);
-
-    // capture trigger: pinch edge (per side) + global cooldown + not already counting down
-    const now = Date.now();
-    const cooledDown = now - lastCaptureAtRef.current > COOLDOWN_MS;
-
-    const tryTrigger = (side) => {
-      const isPinchNow = pinchBySide[side];
-      const armed = pinchArmedRef.current[side];
-
-      if (!isPinchNow) {
-        pinchArmedRef.current[side] = true;
-        return;
-      }
-
-      if (isPinchNow && armed && cooledDown && !countdownActiveRef.current) {
-        lastCaptureAtRef.current = now;
-        pinchArmedRef.current[side] = false;
-        startCountdownAndCapture();
-      }
-    };
-
-    tryTrigger("left");
-    tryTrigger("right");
-
-    // ✅ IMPORTANT: actually draw overlay
-    drawOverlay(predictions, lr, pinchBySide);
+    // draw every frame using last predictions
+    if (overlayRef.current) drawOverlay();
 
     rafRef.current = requestAnimationFrame(loop);
+  }
+
+  async function startTracking() {
+    if (startedRef.current || stoppedRef.current || isStarting) return;
+    setIsStarting(true);
+    setStartError("");
+
+    try {
+      await setupCamera();
+      if (stoppedRef.current) return;
+
+      await setupModel();
+      if (stoppedRef.current) return;
+
+      startedRef.current = true;
+      setShowStartGate(false);
+      setStatus("Tracking... make an OK sign (either hand) to start 3s timer");
+      rafRef.current = requestAnimationFrame(loop);
+    } catch (e) {
+      console.error(e);
+      startedRef.current = false;
+      setShowStartGate(true);
+      const errName = e?.name ? String(e.name) : "UnknownError";
+      const errMsg = e?.message ? String(e.message) : "Could not access camera.";
+      setStartError(`${errName}: ${errMsg}`);
+      setStatus(
+        "Error: camera/model failed. Check permissions + HTTPS (or localhost)."
+      );
+    } finally {
+      setIsStarting(false);
+    }
   }
 
   useEffect(() => {
@@ -361,28 +450,13 @@ export default function CameraTracking({ onCapture }) {
       return;
     }
 
-    let stopped = false;
-
-    (async () => {
-      try {
-        await setupCamera();
-        if (stopped) return;
-
-        await setupModel();
-        if (stopped) return;
-
-        setStatus("Tracking… pinch (either hand) to start 3s timer");
-        rafRef.current = requestAnimationFrame(loop);
-      } catch (e) {
-        console.error(e);
-        setStatus(
-          "Error: camera/model failed. Check permissions + HTTPS (or localhost)."
-        );
-      }
-    })();
+    stoppedRef.current = false;
 
     return () => {
-      stopped = true;
+      stoppedRef.current = true;
+      startedRef.current = false;
+      setShowStartGate(true);
+      setIsStarting(false);
 
       cancelCountdown();
 
@@ -400,8 +474,6 @@ export default function CameraTracking({ onCapture }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supportsMedia]);
 
-  const anyPinching = pinchStates.left || pinchStates.right;
-
   return (
     <div className="ct-root">
       <div className="ct-frame">
@@ -413,36 +485,39 @@ export default function CameraTracking({ onCapture }) {
             {countdown}
           </div>
         )}
-      </div>
 
-      <div className="ct-footer">
-        <div className="ct-status">{status}</div>
-
-        <div className="ct-rightPills">
-          <div className={`ct-pill ${anyPinching ? "ct-pill--pinch" : ""}`}>
-            {anyPinching ? "PINCH" : "open"}
-          </div>
-
-          <div className="ct-lr">
-            <span
-              className={`ct-lrTag ${
-                presentStates.left ? "is-detected" : ""
-              } ${pinchStates.left ? "is-on" : ""}`}
+        {showStartGate && (
+          <div className="ct-startGate">
+            <div className="ct-startIntro">
+              <h1 className="ct-startTitle">Hand-Tracking Camera</h1>
+              <p className="ct-startText">
+                Tap <strong>Enable Camera</strong> to begin. Once the camera is
+                active, make an <strong>OK sign</strong> (thumb and index
+                touching, other three fingers extended) to start the countdown
+                and capture a photo. Captured photos appear in the gallery,
+                where you can view and download them.
+              </p>
+            </div>
+            <button
+              className="ct-startBtn"
+              onClick={startTracking}
+              disabled={isStarting || !supportsMedia}
+              type="button"
             >
-              Left
-            </span>
-            <span
-              className={`ct-lrTag ${
-                presentStates.right ? "is-detected" : ""
-              } ${pinchStates.right ? "is-on" : ""}`}
-            >
-              Right
-            </span>
+              {isStarting ? "Starting camera..." : "Enable Camera"}
+            </button>
+            {!isSecureContext && (
+              <div className="ct-startMsg">
+                Camera requires HTTPS (or localhost).
+              </div>
+            )}
+            {startError && <div className="ct-startErr">{startError}</div>}
           </div>
-        </div>
+        )}
       </div>
 
       <canvas ref={captureCanvasRef} className="ct-hiddenCanvas" />
     </div>
   );
 }
+

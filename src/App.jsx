@@ -54,22 +54,22 @@ export default function App() {
     });
   }
 
+  function downloadActive() {
+    if (!activePhoto) return;
+    const a = document.createElement("a");
+    a.href = activePhoto;
+    a.download = `pinchcam-${Date.now()}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   return (
     <div className="page">
-      {/* Fullscreen camera */}
       <div className="cameraStage">
         <CameraTracking onCapture={addPhoto} />
       </div>
 
-      {/* Minimal top HUD */}
-      <div className="hud">
-        <div className="hudLeft">
-          <div className="brand">PinchCam</div>
-          <div className="hint">Pinch thumb + index to snap</div>
-        </div>
-      </div>
-
-      {/* Bottom-right latest photo thumbnail */}
       <div className="latestWrap">
         {latest ? (
           <button
@@ -103,6 +103,13 @@ export default function App() {
               </div>
 
               <div className="modalActions">
+                <button
+                  className="iconBtn"
+                  onClick={downloadActive}
+                  title="Download"
+                >
+                  Download
+                </button>
                 <button className="iconBtn" onClick={deleteActive} title="Delete">
                   Delete
                 </button>
