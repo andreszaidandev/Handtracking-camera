@@ -26,6 +26,7 @@ export default function CameraTracking({ onCapture }) {
 
   const detectorRef = useRef(null);
   const rafRef = useRef(null);
+  const videoSizeRef = useRef({ width: 1, height: 1 });
   const stoppedRef = useRef(false);
   const startedRef = useRef(false);
   const [, setStatus] = useState("Initializing...");
@@ -145,9 +146,7 @@ export default function CameraTracking({ onCapture }) {
 
     const w = video.videoWidth;
     const h = video.videoHeight;
-
-    overlayRef.current.width = w;
-    overlayRef.current.height = h;
+    videoSizeRef.current = { width: w, height: h };
 
     captureCanvasRef.current.width = w;
     captureCanvasRef.current.height = h;
@@ -316,56 +315,91 @@ export default function CameraTracking({ onCapture }) {
     }
   }
 
-  function drawHand(ctx, pred, isPinching) {
-    const kp = pred?.keypoints;
-    if (!kp || kp.length < 21) return;
+  function getOverlayMetrics() {
+    const canvas = overlayRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const pixelW = Math.max(1, Math.round(rect.width * dpr));
+    const pixelH = Math.max(1, Math.round(rect.height * dpr));
 
-    // skeleton
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(255,255,255,0.55)";
-    ctx.beginPath();
-    for (const [a, b] of CONNECTIONS) {
-      const pa = kp[a];
-      const pb = kp[b];
-      if (!pa || !pb) continue;
-      ctx.moveTo(pa.x, pa.y);
-      ctx.lineTo(pb.x, pb.y);
-    }
-    ctx.stroke();
-
-    // points
-    for (const p of kp) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(106,166,255,0.9)";
-      ctx.fill();
+    if (canvas.width !== pixelW || canvas.height !== pixelH) {
+      canvas.width = pixelW;
+      canvas.height = pixelH;
     }
 
-    // pinch line
-    const thumbTip = kp[4];
-    const indexTip = kp[8];
-    ctx.beginPath();
-    ctx.moveTo(thumbTip.x, thumbTip.y);
-    ctx.lineTo(indexTip.x, indexTip.y);
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = isPinching
-      ? "rgba(0,255,140,0.95)"
-      : "rgba(255,255,255,0.35)";
-    ctx.stroke();
+    const videoW = Math.max(1, videoSizeRef.current.width);
+    const videoH = Math.max(1, videoSizeRef.current.height);
 
+    // Keep overlay aligned with video using the same cover behavior as the <video>.
+    const scale = Math.max(rect.width / videoW, rect.height / videoH);
+    const drawW = videoW * scale;
+    const drawH = videoH * scale;
+    const offsetX = (rect.width - drawW) / 2;
+    const offsetY = (rect.height - drawH) / 2;
+
+    return { dpr, offsetX, offsetY, scale };
   }
 
   function drawOverlay() {
     const canvas = overlayRef.current;
     const ctx = canvas.getContext("2d");
+    const { dpr, offsetX, offsetY, scale } = getOverlayMetrics();
 
+    const mapPoint = (p) => ({
+      x: p.x * scale + offsetX,
+      y: p.y * scale + offsetY,
+    });
+
+    const drawMappedHand = (pred, isPinching) => {
+      const kp = pred?.keypoints;
+      if (!kp || kp.length < 21) return;
+
+      // skeleton
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.beginPath();
+      for (const [a, b] of CONNECTIONS) {
+        const pa = kp[a];
+        const pb = kp[b];
+        if (!pa || !pb) continue;
+        const ma = mapPoint(pa);
+        const mb = mapPoint(pb);
+        ctx.moveTo(ma.x, ma.y);
+        ctx.lineTo(mb.x, mb.y);
+      }
+      ctx.stroke();
+
+      // points
+      for (const p of kp) {
+        const mp = mapPoint(p);
+        ctx.beginPath();
+        ctx.arc(mp.x, mp.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(106,166,255,0.9)";
+        ctx.fill();
+      }
+
+      // thumb-index line
+      const thumbTip = mapPoint(kp[4]);
+      const indexTip = mapPoint(kp[8]);
+      ctx.beginPath();
+      ctx.moveTo(thumbTip.x, thumbTip.y);
+      ctx.lineTo(indexTip.x, indexTip.y);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = isPinching
+        ? "rgba(0,255,140,0.95)"
+        : "rgba(255,255,255,0.35)";
+      ctx.stroke();
+    };
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.scale(dpr, dpr);
 
     const lr = lrPredRef.current;
     const pinchBySide = pinchRef.current;
 
-    if (lr.left) drawHand(ctx, lr.left, pinchBySide.left);
-    if (lr.right) drawHand(ctx, lr.right, pinchBySide.right);
+    if (lr.left) drawMappedHand(lr.left, pinchBySide.left);
+    if (lr.right) drawMappedHand(lr.right, pinchBySide.right);
   }
 
   async function loop() {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import CameraTracking from "./cameratracking";
 
@@ -86,7 +86,7 @@ export default function App() {
         ) : (
           <div className="latestPlaceholder">
             <div className="phTitle">No photos yet</div>
-            <div className="phSub">Pinch to capture</div>
+            <div className="phSub">Make an OK sign to capture</div>
           </div>
         )}
       </div>
@@ -127,7 +127,7 @@ export default function App() {
                 }
                 aria-label="Previous"
               >
-                ‹
+                {"<"}
               </button>
 
               <div className="modalImageWrap">
@@ -139,7 +139,7 @@ export default function App() {
                 onClick={() => setActiveIndex((i) => (i + 1) % photos.length)}
                 aria-label="Next"
               >
-                ›
+                {">"}
               </button>
             </div>
 
@@ -157,7 +157,7 @@ export default function App() {
             </div>
 
             <div className="modalFoot">
-              <span>Tip: ← / → to navigate, Esc to close.</span>
+              <span>Tip: Use Left/Right arrows to navigate, Esc to close.</span>
             </div>
           </div>
         </div>
@@ -165,3 +165,4 @@ export default function App() {
     </div>
   );
 }
+
