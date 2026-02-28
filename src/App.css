@@ -311,8 +311,8 @@ body {
 
 @media (max-width: 520px) {
   .latestWrap {
-    left: max(10px, env(safe-area-inset-left));
-    right: auto;
+    left: auto;
+    right: max(10px, env(safe-area-inset-right));
     bottom: max(10px, env(safe-area-inset-bottom));
   }
 
