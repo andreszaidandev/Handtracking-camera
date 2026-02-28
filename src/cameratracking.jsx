@@ -19,7 +19,7 @@ const CONNECTIONS = [
   [5, 9],[9,13],[13,17],
 ];
 
-export default function CameraTracking({ onCapture }) {
+export default function CameraTracking({ onCapture, onVideoRectChange }) {
   const videoRef = useRef(null);
   const overlayRef = useRef(null);
   const captureCanvasRef = useRef(null);
@@ -27,6 +27,7 @@ export default function CameraTracking({ onCapture }) {
   const detectorRef = useRef(null);
   const rafRef = useRef(null);
   const videoSizeRef = useRef({ width: 1, height: 1 });
+  const lastVideoRectRef = useRef(null);
   const reconfiguringCameraRef = useRef(false);
   const stoppedRef = useRef(false);
   const startedRef = useRef(false);
@@ -167,6 +168,8 @@ export default function CameraTracking({ onCapture }) {
     const w = video.videoWidth;
     const h = video.videoHeight;
     videoSizeRef.current = { width: w, height: h };
+    overlayRef.current.width = w;
+    overlayRef.current.height = h;
 
     captureCanvasRef.current.width = w;
     captureCanvasRef.current.height = h;
@@ -357,95 +360,113 @@ export default function CameraTracking({ onCapture }) {
     }
   }
 
-  function getOverlayMetrics() {
-    const canvas = overlayRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const pixelW = Math.max(1, Math.round(rect.width * dpr));
-    const pixelH = Math.max(1, Math.round(rect.height * dpr));
+  function maybeEmitVideoRect() {
+    if (!onVideoRectChange) return;
 
-    if (canvas.width !== pixelW || canvas.height !== pixelH) {
-      canvas.width = pixelW;
-      canvas.height = pixelH;
-    }
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
 
+    const rect = videoEl.getBoundingClientRect();
     const videoW = Math.max(1, videoSizeRef.current.width);
     const videoH = Math.max(1, videoSizeRef.current.height);
-    const fit = window.getComputedStyle(videoRef.current).objectFit || "cover";
-
-    // Keep overlay aligned with how the <video> is currently fit.
+    const fit = window.getComputedStyle(videoEl).objectFit || "cover";
     const scale =
       fit === "contain"
         ? Math.min(rect.width / videoW, rect.height / videoH)
         : Math.max(rect.width / videoW, rect.height / videoH);
+
     const drawW = videoW * scale;
     const drawH = videoH * scale;
     const offsetX = (rect.width - drawW) / 2;
     const offsetY = (rect.height - drawH) / 2;
 
-    return { dpr, offsetX, offsetY, scale };
+    const next = {
+      left: rect.left + offsetX,
+      top: rect.top + offsetY,
+      right: rect.left + offsetX + drawW,
+      bottom: rect.top + offsetY + drawH,
+      width: drawW,
+      height: drawH,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    };
+
+    const prev = lastVideoRectRef.current;
+    const changed =
+      !prev ||
+      Math.abs(prev.left - next.left) > 1 ||
+      Math.abs(prev.top - next.top) > 1 ||
+      Math.abs(prev.right - next.right) > 1 ||
+      Math.abs(prev.bottom - next.bottom) > 1 ||
+      Math.abs(prev.width - next.width) > 1 ||
+      Math.abs(prev.height - next.height) > 1 ||
+      prev.viewportWidth !== next.viewportWidth ||
+      prev.viewportHeight !== next.viewportHeight;
+
+    if (changed) {
+      lastVideoRectRef.current = next;
+      onVideoRectChange(next);
+    }
+  }
+
+  function drawHand(ctx, pred, isPinching) {
+    const kp = pred?.keypoints;
+    if (!kp || kp.length < 21) return;
+
+    // skeleton
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.beginPath();
+    for (const [a, b] of CONNECTIONS) {
+      const pa = kp[a];
+      const pb = kp[b];
+      if (!pa || !pb) continue;
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+    }
+    ctx.stroke();
+
+    // points
+    for (const p of kp) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(106,166,255,0.9)";
+      ctx.fill();
+    }
+
+    // thumb-index line
+    const thumbTip = kp[4];
+    const indexTip = kp[8];
+    ctx.beginPath();
+    ctx.moveTo(thumbTip.x, thumbTip.y);
+    ctx.lineTo(indexTip.x, indexTip.y);
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = isPinching
+      ? "rgba(0,255,140,0.95)"
+      : "rgba(255,255,255,0.35)";
+    ctx.stroke();
   }
 
   function drawOverlay() {
     const canvas = overlayRef.current;
     const ctx = canvas.getContext("2d");
-    const { dpr, offsetX, offsetY, scale } = getOverlayMetrics();
 
-    const mapPoint = (p) => ({
-      x: p.x * scale + offsetX,
-      y: p.y * scale + offsetY,
-    });
-
-    const drawMappedHand = (pred, isPinching) => {
-      const kp = pred?.keypoints;
-      if (!kp || kp.length < 21) return;
-
-      // skeleton
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "rgba(255,255,255,0.55)";
-      ctx.beginPath();
-      for (const [a, b] of CONNECTIONS) {
-        const pa = kp[a];
-        const pb = kp[b];
-        if (!pa || !pb) continue;
-        const ma = mapPoint(pa);
-        const mb = mapPoint(pb);
-        ctx.moveTo(ma.x, ma.y);
-        ctx.lineTo(mb.x, mb.y);
-      }
-      ctx.stroke();
-
-      // points
-      for (const p of kp) {
-        const mp = mapPoint(p);
-        ctx.beginPath();
-        ctx.arc(mp.x, mp.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(106,166,255,0.9)";
-        ctx.fill();
-      }
-
-      // thumb-index line
-      const thumbTip = mapPoint(kp[4]);
-      const indexTip = mapPoint(kp[8]);
-      ctx.beginPath();
-      ctx.moveTo(thumbTip.x, thumbTip.y);
-      ctx.lineTo(indexTip.x, indexTip.y);
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = isPinching
-        ? "rgba(0,255,140,0.95)"
-        : "rgba(255,255,255,0.35)";
-      ctx.stroke();
-    };
+    const videoW = Math.max(1, videoSizeRef.current.width);
+    const videoH = Math.max(1, videoSizeRef.current.height);
+    if (canvas.width !== videoW || canvas.height !== videoH) {
+      canvas.width = videoW;
+      canvas.height = videoH;
+    }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.scale(dpr, dpr);
+    maybeEmitVideoRect();
 
     const lr = lrPredRef.current;
     const pinchBySide = pinchRef.current;
 
-    if (lr.left) drawMappedHand(lr.left, pinchBySide.left);
-    if (lr.right) drawMappedHand(lr.right, pinchBySide.right);
+    if (lr.left) drawHand(ctx, lr.left, pinchBySide.left);
+    if (lr.right) drawHand(ctx, lr.right, pinchBySide.right);
   }
 
   async function loop() {

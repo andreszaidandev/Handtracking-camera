@@ -6,6 +6,7 @@ export default function App() {
   const [photos, setPhotos] = useState([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [videoRect, setVideoRect] = useState(null);
 
   function addPhoto(dataUrl) {
     setPhotos((prev) => [dataUrl, ...prev].slice(0, 50));
@@ -25,6 +26,25 @@ export default function App() {
   }
 
   const activePhoto = useMemo(() => photos[activeIndex], [photos, activeIndex]);
+  const latestWrapStyle = useMemo(() => {
+    if (!videoRect) return undefined;
+
+    const margin = 10;
+    const rightInset = Math.max(
+      margin,
+      videoRect.viewportWidth - videoRect.right + margin
+    );
+    const bottomInset = Math.max(
+      margin,
+      videoRect.viewportHeight - videoRect.bottom + margin
+    );
+
+    return {
+      left: "auto",
+      right: `${rightInset}px`,
+      bottom: `${bottomInset}px`,
+    };
+  }, [videoRect]);
 
   // Keyboard controls while gallery is open
   useEffect(() => {
@@ -67,10 +87,10 @@ export default function App() {
   return (
     <div className="page">
       <div className="cameraStage">
-        <CameraTracking onCapture={addPhoto} />
+        <CameraTracking onCapture={addPhoto} onVideoRectChange={setVideoRect} />
       </div>
 
-      <div className="latestWrap">
+      <div className="latestWrap" style={latestWrapStyle}>
         {latest ? (
           <button
             className="latestBtn"

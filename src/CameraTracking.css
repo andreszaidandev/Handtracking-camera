@@ -11,12 +11,13 @@
   border-radius: 14px;
   overflow: hidden;
   background: black;
+  --ct-fit: cover;
 }
 
 .ct-video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: var(--ct-fit);
   object-position: center;
   transform: scaleX(-1);
   display: block;
@@ -29,6 +30,8 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
+  object-fit: var(--ct-fit);
+  object-position: center;
   transform: scaleX(-1);
   transform-origin: center;
 }
@@ -130,6 +133,10 @@
   }
 
   .ct-video {
-    object-fit: contain;
+    object-fit: var(--ct-fit);
+  }
+
+  .ct-frame {
+    --ct-fit: contain;
   }
 }
