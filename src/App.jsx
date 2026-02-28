@@ -1,12 +1,21 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import CameraTracking from "./cameratracking";
+
+function getOrientation() {
+  return window.matchMedia("(orientation: portrait)").matches
+    ? "portrait"
+    : "landscape";
+}
 
 export default function App() {
   const [photos, setPhotos] = useState([]);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [videoRect, setVideoRect] = useState(null);
+  const orientationRef = useRef(
+    typeof window === "undefined" ? "portrait" : getOrientation()
+  );
 
   function addPhoto(dataUrl) {
     setPhotos((prev) => [dataUrl, ...prev].slice(0, 50));
@@ -63,6 +72,48 @@ export default function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [galleryOpen, photos.length]);
+
+  // iOS Safari sometimes keeps an incorrect visual zoom after rotating.
+  // Force a full reload when orientation actually changes on mobile.
+  useEffect(() => {
+    const isMobileLike =
+      (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+      (navigator.maxTouchPoints || 0) > 0;
+    if (!isMobileLike) return;
+
+    let timerId = null;
+    const onViewportChange = () => {
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(() => {
+        const next = getOrientation();
+        if (next === orientationRef.current) return;
+
+        const now = Date.now();
+        const lastReloadAt = Number(
+          sessionStorage.getItem("orientation_reload_at") || 0
+        );
+
+        // Prevent rapid reload loops from duplicate rotate/resize events.
+        if (now - lastReloadAt < 1800) {
+          orientationRef.current = next;
+          return;
+        }
+
+        orientationRef.current = next;
+        sessionStorage.setItem("orientation_reload_at", String(now));
+        window.location.reload();
+      }, 140);
+    };
+
+    window.addEventListener("orientationchange", onViewportChange);
+    window.addEventListener("resize", onViewportChange);
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+      window.removeEventListener("orientationchange", onViewportChange);
+      window.removeEventListener("resize", onViewportChange);
+    };
+  }, []);
 
   function deleteActive() {
     setPhotos((prev) => {
@@ -185,4 +236,3 @@ export default function App() {
     </div>
   );
 }
-
