@@ -67,6 +67,13 @@ export default function CameraTracking({ onCapture }) {
   const supportsMedia = useMemo(() => {
     return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   }, []);
+  const isMobileDevice = useMemo(() => {
+    const hasCoarsePointer =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(pointer: coarse)").matches;
+    return hasCoarsePointer || (navigator.maxTouchPoints || 0) > 0;
+  }, []);
   const isSecureContext = typeof window === "undefined" ? true : window.isSecureContext;
 
   function clearCountdownTimers() {
@@ -99,12 +106,22 @@ export default function CameraTracking({ onCapture }) {
     };
   }
 
+  function buildPreferredVideoConstraints() {
+    // On mobile, let browser choose native/default camera resolution.
+    if (isMobileDevice) {
+      return { facingMode: "user" };
+    }
+
+    // On desktop/tablet, prefer viewport-like sizing.
+    return buildViewportVideoConstraints();
+  }
+
   async function getCameraAccess() {
-    const viewportConstraints = buildViewportVideoConstraints();
+    const preferredConstraints = buildPreferredVideoConstraints();
 
     try {
       return await navigator.mediaDevices.getUserMedia({
-        video: viewportConstraints,
+        video: preferredConstraints,
         audio: false,
       });
     } catch (primaryError) {
@@ -121,6 +138,8 @@ export default function CameraTracking({ onCapture }) {
   }
 
   async function applyViewportConstraintsToActiveTrack() {
+    if (isMobileDevice) return;
+
     const stream = videoRef.current?.srcObject;
     const track = stream?.getVideoTracks?.()[0];
     if (!track?.applyConstraints) return;
@@ -329,9 +348,13 @@ export default function CameraTracking({ onCapture }) {
 
     const videoW = Math.max(1, videoSizeRef.current.width);
     const videoH = Math.max(1, videoSizeRef.current.height);
+    const fit = window.getComputedStyle(videoRef.current).objectFit || "cover";
 
-    // Keep overlay aligned with video using the same cover behavior as the <video>.
-    const scale = Math.max(rect.width / videoW, rect.height / videoH);
+    // Keep overlay aligned with how the <video> is currently fit.
+    const scale =
+      fit === "contain"
+        ? Math.min(rect.width / videoW, rect.height / videoH)
+        : Math.max(rect.width / videoW, rect.height / videoH);
     const drawW = videoW * scale;
     const drawH = videoH * scale;
     const offsetX = (rect.width - drawW) / 2;
