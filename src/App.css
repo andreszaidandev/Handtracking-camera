@@ -201,6 +201,7 @@ body {
   align-items: center;
   gap: 10px;
   padding: 10px 12px 0;
+  min-height: 0;
 }
 
 .navBtn {
@@ -217,15 +218,21 @@ body {
 .modalImageWrap {
   height: 100%;
   width: 100%;
+  min-height: 0;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   overflow: hidden;
   background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modalImage {
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   display: block;
 }
@@ -375,6 +382,7 @@ body {
     width: calc(100% - 8px);
     height: calc(100% - 8px);
     border-radius: 12px;
+    grid-template-rows: auto 1fr;
   }
 
   .modalTop {
@@ -382,9 +390,10 @@ body {
   }
 
   .modalBody {
-    grid-template-columns: 38px 1fr 38px;
-    gap: 6px;
-    padding: 6px 6px 0;
+    position: relative;
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 6px 44px 6px;
   }
 
   .navBtn {
@@ -394,6 +403,20 @@ body {
     font-size: 20px;
   }
 
+  .modalBody > .navBtn:first-child {
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .modalBody > .navBtn:last-child {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
   .iconBtn {
     padding: 6px 8px;
     border-radius: 9px;
@@ -401,8 +424,7 @@ body {
   }
 
   .strip {
-    padding: 6px;
-    gap: 6px;
+    display: none;
   }
 
   .stripThumb {

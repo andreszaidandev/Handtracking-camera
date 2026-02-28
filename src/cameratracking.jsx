@@ -45,6 +45,7 @@ export default function CameraTracking({ onCapture, onVideoRectChange }) {
   const THREE_FINGERS_EXTENSION_MIN = 0.95;
   const THREE_FINGERS_TO_CIRCLE_MIN = 0.45;
   const FIST_GUARD_MIN = 0.9;
+  const GESTURE_HOLD_MS = 1000;
   const COOLDOWN_MS = 1200;
   const COUNTDOWN_SECONDS = 3;
 
@@ -60,6 +61,7 @@ export default function CameraTracking({ onCapture, onVideoRectChange }) {
   // capture gating
   const lastCaptureAtRef = useRef(0);
   const pinchArmedRef = useRef({ left: true, right: true });
+  const holdSinceRef = useRef({ left: 0, right: 0 });
 
   // countdown refs
   const countdownActiveRef = useRef(false);
@@ -507,17 +509,26 @@ export default function CameraTracking({ onCapture, onVideoRectChange }) {
 
           if (!isPinchNow) {
             pinchArmedRef.current[side] = true;
+            holdSinceRef.current[side] = 0;
             return;
           }
+
+          if (!holdSinceRef.current[side]) {
+            holdSinceRef.current[side] = nowMs;
+          }
+          const heldLongEnough =
+            nowMs - holdSinceRef.current[side] >= GESTURE_HOLD_MS;
 
           if (
             isPinchNow &&
             armed &&
+            heldLongEnough &&
             cooledDown &&
             !countdownActiveRef.current
           ) {
             lastCaptureAtRef.current = nowMs;
             pinchArmedRef.current[side] = false;
+            holdSinceRef.current[side] = 0;
             startCountdownAndCapture();
           }
         };
