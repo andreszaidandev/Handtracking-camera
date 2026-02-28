@@ -27,6 +27,7 @@ export default function CameraTracking({ onCapture }) {
   const detectorRef = useRef(null);
   const rafRef = useRef(null);
   const videoSizeRef = useRef({ width: 1, height: 1 });
+  const reconfiguringCameraRef = useRef(false);
   const stoppedRef = useRef(false);
   const startedRef = useRef(false);
   const [, setStatus] = useState("Initializing...");
@@ -171,6 +172,28 @@ export default function CameraTracking({ onCapture }) {
     captureCanvasRef.current.height = h;
 
     setStatus("Camera ready");
+  }
+
+  async function reconfigureCameraForViewport() {
+    if (!startedRef.current || reconfiguringCameraRef.current) return;
+    reconfiguringCameraRef.current = true;
+
+    try {
+      const video = videoRef.current;
+      if (video?.srcObject) {
+        const tracks = video.srcObject.getTracks?.() || [];
+        tracks.forEach((t) => t.stop());
+      }
+
+      await setupCamera();
+    } catch (e) {
+      console.error("Camera reconfigure failed:", e);
+      const errName = e?.name ? String(e.name) : "UnknownError";
+      const errMsg = e?.message ? String(e.message) : "Could not reconfigure camera.";
+      setStartError(`${errName}: ${errMsg}`);
+    } finally {
+      reconfiguringCameraRef.current = false;
+    }
   }
 
   async function setupModel() {
@@ -439,7 +462,9 @@ export default function CameraTracking({ onCapture }) {
         lastInferAtRef.current = now;
 
         const predictions = await detector.estimateHands(video, {
-          flipHorizontal: true,
+          // Mirror is handled in CSS on both video + overlay for consistent
+          // mobile behavior. Keep model coordinates in source space.
+          flipHorizontal: false,
         });
 
         const lr = labelHandsLeftRight(predictions);
@@ -557,7 +582,11 @@ export default function CameraTracking({ onCapture }) {
       if (!startedRef.current) return;
       if (timerId) clearTimeout(timerId);
       timerId = setTimeout(() => {
-        applyViewportConstraintsToActiveTrack();
+        if (isMobileDevice) {
+          reconfigureCameraForViewport();
+        } else {
+          applyViewportConstraintsToActiveTrack();
+        }
       }, 120);
     };
 
@@ -569,7 +598,7 @@ export default function CameraTracking({ onCapture }) {
       window.removeEventListener("resize", refreshForViewport);
       window.removeEventListener("orientationchange", refreshForViewport);
     };
-  }, [supportsMedia]);
+  }, [supportsMedia, isMobileDevice]);
 
   return (
     <div className="ct-root">
